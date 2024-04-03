@@ -1,0 +1,297 @@
+J'ai d'abord cherché un peu partout comment fonctionnait le système.
+J'ai galéré avec le module geo (en particulier le tycat) car tycat ne voulait pas du tout fonctionner.
+A chaque fois j'avais cette erreur :
+'tycat' is not recognized as an internal or external command,
+operable program or batch file.
+
+Dans le doute, j'ai retéléchargé tous les fichiers et j'ai de nouveau eu le même soucis.
+Je me suis dev un petit script python (GUI_figure.py) utilisant matplotlib pour afficher les figures plus facilement à la place de tycat.
+J'ai tout push sous forme d'un repo github pour avancer plus facilement et en plus profiter du viewer markdown intégré.
+
+J'ai ensuite lu le README et essayé un peu les fichiers recommandés.
+J'ai compris qu'une bonne partie du problème était déjà résolu dans le main2.py du module geo.
+Je me suis créer un mainInDev.py pour bosser dessus tranquillement sans risquer de salir les autres fichiers.
+
+
+Je me suis très vite compte qu'il y avait un problème au niveau de la lecture des figures (read_polygons) car il semble y avoir une figure fantome pour une raison inconnue.
+On avait 
+[[[0.0, 0.0]], [[0.0, 1.0], [0.0, 2.0], [0.0, 3.0], ...
+Au lieu de 
+[[[0.0, 0.0], [0.0, 1.0], [0.0, 2.0], [0.0, 3.0], ...
+
+J'ai réussi à modifier un peu read_polygons pour obtenir :
+[[], [[0.0, 0.0], [0.0, 1.0], [0.0, 2.0], [0.0, 3.0], ...
+
+Je vais tout simplement retirer la premiere figure car elle est "fantome" avec
+polygons = polygons[1:]
+et j'obtiens bien :
+[[[0.0, 0.0], [0.0, 1.0], [0.0, 2.0], [0.0, 3.0], ...
+
+J'ai ensuite vu que trouve_inclusions n'était pas fini.
+Il testait sur le premier sommet du polygone pour voir si il était dans un autre mais ne testait pas ses autres sommets
+En relisant le README, j'ai vu que c'était normal :
+    À noter qu'il n'y a jamais d'intersection de segments entre deux polygones différents. Au sein d'un même polygone seuls les segments consécutifs s'intersectent et uniquement à leurs extrémités.
+Il suffit donc de tester un seul point d'un polygone pour savoir si il est dans l'autre ou non.
+
+J'ai ensuite voulu créer d'autres algorithmes (potentiellement plus avantageux sur certains plans/situations particulières)
+J'ai donc d'abord cherché sur internet qu'est ce qui existait en terme de code ou de mathématiques
+
+J'en ai trouvé plusieurs, voici un petit résumé avec leur logique associée :
+    Algorithme de Ray Casting : C'est l'algorithme qu'on utilise actuellement. Il fonctionne en comptant le nombre de segments de droite qui croisent une ligne verticale à partir du point. Si le nombre est impair, le point est à l'intérieur du polygone.
+
+    (https://fr.wikipedia.org/wiki/Algorithme_de_Douglas-Peucker) Algorithme de Peucker et Doo : Cet algorithme est utilisé pour simplifier des polygones en réduisant le nombre de points tout en conservant la forme du polygone.
+
+    (https://en.wikipedia.org/wiki/Cross_product) Algorithme de Cross Product : Cet algorithme est basé sur le produit vectoriel, qui est utilisé pour déterminer si un point est à gauche ou à droite d'une ligne.
+
+    (https://en.wikipedia.org/wiki/Point_in_polygon) Algorithme de Winding Number : Cet algorithme est basé sur le principe que si un point est à l'intérieur d'un polygone, alors la somme des angles formés par les segments de droite du polygone et le point est égale à 360 degrés.
+
+
+J'ai décidé de commencer par faire l'algo de Winding Number, car il se trouve dans la liste des algo de Wikipedia dans la résolution du problème d'inclusion de point dans un polygone:
+Il suffit simplement de rajouter un système de poid. On trace une ligne verticale et si on croise un segment on regarde sa direction (simple en faisant la différence de hauteur y entre les deux points du segment) et on ajoute 1 si il monte et -1 si il descends.
+A la fin on regarde si on a 0 (dans ce cas on est pas à l'interieur) ou un autre nombre (dans ce cas on est à l'intérieur)
+Dans mon algo j'ai appelé la variable wn
+def winding_number_method(x, y, poly):
+    """
+    Check if a point is inside a polygon using the Winding Number algorithm.
+    """
+    wn = 0
+    n = len(poly)
+    for i in range(n):
+        x1, y1 = poly[i]
+        x2, y2 = poly[(i + 1) % n]
+        if y1 <= y:
+            if y2 > y and (x2 - x1) * (y - y1) - (x - x1) * (y2 - y1) > 0:
+                wn += 1
+        else:
+            if y2 <= y and (x2 - x1) * (y - y1) - (x - x1) * (y2 - y1) < 0:
+                wn -= 1
+    return wn != 0
+
+Il suffit tout simplement de remplacer l'algo de ray tracing dans la fonction trouve_inclusions pour tester winding_number_method :
+                if winding_number_method(x, y, poly2):  # Si le point est à l'intérieur du deuxième polygone
+
+On teste :
+Console : python mainInDev.py 10x10.poly e2.poly
+Sortie :
+    [-1, 0]
+    [1, -1, 0, 0]
+
+Ca a l'air de bien fonctionner.
+Je compte d'abord implémenter les autres méthodes et ensuite je rajouterais un moyen de changer de méthode un peu plus facilement et faire un joli outil pour évaluer chacune des méthodes plus facilement.
+
+Place à l'algo de Peucker et Doo :
+Ce n'est pas un algo de recherche à proprement parler mais il permet de simplifier les polygones donnés en entrée ce qui peut booster les perfs des autres algos (mais on peut perdre un peu en précision)
+Il faut lui donner un threshold à partir duquel il merge deux points pour simplifier
+Je me suis surtout basé sur le Pseudo Code de Wikipedia :
+fonction DouglasPeucker(points[1..n], ε)
+   // Trouve l'indice du point le plus éloigné du segment
+   dmax = 0
+   index = 0
+   pour i = 2 à n - 1
+         d = distance du points[i] au segment [points[1], points[n])
+         si d > dmax
+              index = i
+              dmax = d
+ 
+  // Si la distance dmax est supérieure au seuil, appels récursifs
+  si dmax > ε
+         // Appel récursif de la fonction
+         recPoints1[1..k] = DouglasPeucker(points[1…index], ε)
+         recPoints2[1..m] = DouglasPeucker(points[index…n], ε)
+  
+         // Construit la liste des résultats à partir des résultats partiels
+         renvoie la concaténation de recPoints1[1…k-1] et recResults2[1…m]
+
+  sinon // Tous les points sont proches → renvoie un segment avec les extrémités
+         renvoie [points[1], points[n]]
+
+Par contre, il fallait implémenter le calcul de la distance entre un point et un segment :
+d = distance du points[i] au segment [points[1], points[n])
+
+Je me suis donc créer une nouvelle fonction point_line_distance. Voici sa logique :
+    La fonction vérifie d'abord si les points start et end sont les mêmes. Si c'est le cas, elle calcule la distance euclidienne entre le point et le point start, et retourne cette distance.
+
+    Elle calcule ensuite les différences en x et y entre les points start et end. Ces différences représentent la direction et la longueur du segment de droite.
+
+    La fonction calcule ensuite la longueur du segment de droite en utilisant le théorème de Pythagore.
+
+    La fonction calcule ensuite le produit scalaire du vecteur allant du point start au point et du vecteur allant du point start au point end. Le produit scalaire est une mesure de combien un vecteur étend dans la direction d'un autre vecteur.
+
+    Si le produit scalaire est inférieur à zéro, cela signifie que le point est plus proche du point start que le point start est du point end. Dans ce cas, la fonction calcule la distance euclidienne entre le point et le point start, et retourne cette distance.
+
+    Si le produit scalaire est supérieur à la longueur du segment de droite, cela signifie que le point est plus proche du point end que le point start est du point end. Dans ce cas, la fonction calcule la distance euclidienne entre le point et le point end, et retourne cette distance.
+
+    Si le produit scalaire est compris entre zéro et la longueur du segment de droite, cela signifie que le point est quelque part entre les points start et end. Dans ce cas, la fonction calcule les coordonnées du point sur le segment de droite qui est le plus proche du point donné, et calcule ensuite la distance euclidienne entre ce point le plus proche et le point donné. Cette distance est ensuite retournée.
+
+
+Maintenant, je vais m'attaquer au Cross Product :
+Le principe est qu'on vérifie si le point est situé du même côté ou du côté opposé par rapport à chaque arête du polygone. Si le point se trouve du même côté par rapport à toutes les arêtes, cela signifie qu'il est à l'extérieur du polygone. Si le point se trouve du côté opposé par rapport à au moins une arête, cela signifie qu'il est à l'intérieur du polygone.
+Déjà, il faut savoir que la page Wikipedia nous indique que l'on a plusieurs manières de le calculer, nottament avec des matrices (ce qui pourrait être pratique pour utiliser des GPU et augmenter les performances).
+Moi je l'ai fait de manière simple 
+L'expression (p1y > y) != (p2y > y) vérifie si les sommets p1 et p2 du polygone se trouvent de part et d'autre de la coordonnée y du point donné. Si l'un des sommets est au-dessus de y et l'autre en dessous, l'expression sera évaluée à True. Sinon, elle sera évaluée à False.
+
+Ensuite, l'expression x < p1x + (p2x - p1x) * (y - p1y) / (p2y - p1y) calcule la valeur d'interpolation linéaire entre les coordonnées p1x et p2x des sommets du polygone en fonction de la coordonnée y
+
+On a plus qu'a tester et ca marche parfaitement
+Console : python mainInDev.py 10x10.poly e2.poly
+Sortie :
+    [-1, 0]
+    [1, -1, 0, 0]
+
+## Générateur d'entrées :
+Tous ces algos sont tellement rapide que je n'arrive pas à voir meme avec la librairie time qui va plus vite. Il faut donc créer un générateur de formes de test.
+J'ai donc créer generate_test_files.py et je lui ai fait créer quelques formes simples pour tester que tout va bien.
+Je lui ai ensuite créer une fonction pour qu'il génére automatiquement n polygones de m points de manière aléatoire
+J'ai augmenté petit à petit les paramètres.
+J'ai essayé de l'ouvrir avec matplotlib mais c'était beaucoup trop lourd. J'ai donc baissé un peu les paramètres
+Il ne prends pas en compte la regle de 
+"À noter qu'il n'y a jamais d'intersection de segments entre deux polygones différents. Au sein d'un même polygone seuls les segments consécutifs s'intersectent et uniquement à leurs extrémités."
+Mais ce n'est pas grave car c'est juste pour voir les performances.
+J'ai implémenter un compteur avec la librairie build in time qui me permet de voir combien de temps mets chaque algorithme à faire le calcul
+J'ai donc créer la fonction benchmark qui évalue chaque méthode et run_benchmark qui permet de le lancer sans soucis et sans toucher à main.
+Il n'y a que Peucker et Doo qui ne peut etre testé automatiquement.
+
+### Résultats :
+================================================================================================
+==============================================================================
+Pour les paramètres suivants :
+n = 400
+m = 50
+min_coord = -100000000
+max_coord = 100000000
+
+On a :
+Ray Tracing Method: 0.23012661933898926 seconds
+Winding Number Method: 0.1251230239868164 seconds
+Cross Product Method: 0.11949872970581055 seconds
+
+Cross product semble donc etre plus adapté.
+==============================================================================
+Testons avec beaucoup de polygones différents :
+n = 4000
+m = 50
+min_coord = -100000000
+max_coord = 100000000
+
+On a :
+Ray Tracing Method: 2.341933250427246 seconds
+Winding Number Method: 1.3033459186553955 seconds
+Cross Product Method: 1.138169527053833 seconds
+Donc Cross Product s'en sort bien avec beaucoup de polygones
+==============================================================================
+Testons avec beaucoup des polygones très complexes :
+n = 400
+m = 300
+min_coord = -100000000
+max_coord = 100000000
+
+On a :
+Ray Tracing Method: 8.15574836730957 seconds
+Winding Number Method: 4.543954372406006 seconds
+Cross Product Method: 4.020311117172241 seconds
+Donc Cross Product est encore est toujours le plus efficace
+==============================================================================
+================================================================================================
+Testons la meme chose mais sans l'optimisation peucker :
+==============================================================================
+Pour les paramètres suivants :
+n = 400
+m = 50
+min_coord = -100000000
+max_coord = 100000000
+
+On a :
+Ray Tracing Method: 0.24269604682922363 seconds
+Winding Number Method: 0.1302039623260498 seconds
+Cross Product Method: 0.10987639427185059 seconds
+
+Cross product semble donc etre plus adapté. Cependant, on peut noter que cela semble avoir ralongé le temps de Ray Tracing et Winding mais raccourci pour Cross Product
+J'ai fait plusieurs essais et ca à l'air d'etre constamment comme ca
+==============================================================================
+Testons avec beaucoup de polygones différents :
+n = 4000
+m = 50
+min_coord = -100000000
+max_coord = 100000000
+
+On a :
+Ray Tracing Method: 2.36018443107605 seconds
+Winding Number Method: 1.304969310760498 seconds
+Cross Product Method: 1.1252572536468506 seconds
+
+Donc Cross Product s'en sort bien avec beaucoup de polygones meme sans l'opti. Par contre Ray Tracing prends un peu plus de temps.
+==============================================================================
+Testons avec beaucoup des polygones très complexes :
+n = 400
+m = 300
+min_coord = -100000000
+max_coord = 100000000
+
+On a :
+Ray Tracing Method: 8.194804668426514 seconds
+Winding Number Method: 4.590087652206421 seconds
+Cross Product Method: 4.024541139602661 seconds
+
+Donc Cross Product est encore est toujours le plus efficace
+==============================================================================
+Donc l'optimisation n'est pas très forte, elle peut meme parfois augmenter le temps
+================================================================================================
+Je vais refaire l'exérience avec un threshold plus élevé car je pense que c'est à cause de ca qu'il n'y a pas beaucoup de différences (il devrait y en avoir plus surtout quand on augmente le nombre de sommets des polygones)
+En l'augmentant à 90000000 (car la map est très grande) on obtient de très bonnes amélioration en temps
+==============================================================================
+Pour les paramètres suivants :
+n = 400
+m = 50
+min_coord = -100000000
+max_coord = 100000000
+
+On avait :
+Ray Tracing Method: 0.23012661933898926 seconds
+Winding Number Method: 0.1251230239868164 seconds
+Cross Product Method: 0.11949872970581055 seconds
+
+On a maintenant : 
+Ray Tracing Method: 0.05083155632019043 seconds
+Winding Number Method: 0.03170514106750488 seconds
+Cross Product Method: 0.017057418823242188 seconds
+
+On est quasiment allé 5 fois plus vite !
+==============================================================================
+Testons avec beaucoup de polygones différents :
+n = 4000
+m = 50
+min_coord = -100000000
+max_coord = 100000000
+
+On avait :
+Ray Tracing Method: 2.341933250427246 seconds
+Winding Number Method: 1.3033459186553955 seconds
+Cross Product Method: 1.138169527053833 seconds
+
+On a maintenant :
+Ray Tracing Method: 0.4703359603881836 seconds
+Winding Number Method: 0.2598109245300293 seconds
+Cross Product Method: 0.2103137969970703 seconds
+
+On a fait à peu près pareille
+==============================================================================
+Testons avec beaucoup des polygones très complexes :
+n = 400
+m = 300
+min_coord = -100000000
+max_coord = 100000000
+
+On avait :
+Ray Tracing Method: 8.15574836730957 seconds
+Winding Number Method: 4.543954372406006 seconds
+Cross Product Method: 4.020311117172241 seconds
+
+on a maintenant :
+Ray Tracing Method: 1.4851133823394775 seconds
+Winding Number Method: 0.8297469615936279 seconds
+Cross Product Method: 0.690075159072876 seconds
+
+On a presque divisé le temps par 8 !
+Par contre il est compliqué de voir à quel point on a perdu en précision
+==============================================================================
+================================================================================================
