@@ -1,108 +1,99 @@
----
-editor_options: 
-  markdown: 
-    wrap: 72
----
+# Polygon Inclusion Algorithms
 
-# Test 1
+This repository contains implementations of various algorithms for determining whether a point is inside a polygon, and for finding inclusions of polygons within each other. The algorithms implemented are:
 
-![Illustration](art.png)
+1. Ray Tracing Method
+2. Winding Number Method
+3. Cross Product Method
+4. Peucker and Doo Algorithm (for polygon simplification)
 
-On s'intéresse à l'inclusion de polygones.
+You can find my journey of building it in the rapport.txt
 
-Le sujet n'est pas compliqué :
+## Usage
 
--   on prend en entrée un ensemble de polygones simples
--   on affiche sur la sortie standard quel polygone est inclus dans quel
-    autre polygone
+To use the algorithms, first install the required dependencies by running:
+```
+pip install numpy matplotlib
+```
+Then, you can use the `main.py` script to read in polygons from .poly files, find inclusions, and print the results in a text format. For example:
+```
+python main.py 10x10.poly e2.poly
+```
+To benchmark the speed of each method on a given set of polygons, edit the `main.py` script :
+```
+if __name__ == "__main__":
+    main()
+    #run_benchmark()
+```
+to 
+```
+if __name__ == "__main__":
+    #main()
+    run_benchmark()
+```
+```
+python main.py 10x10.poly e2.poly
+```
+To generate test files with random polygons, use the `generate_test_files.py` script. For example:
+```
+python generate_test_files.py
+```
+It will generate various .poly files to test simple scenes and a randomly_generated.poly file that is composed of randomly generated polygons based on the following parameters : 
+```
+You can edit parameters here :
+n = 4000
+m = 50
+min_coord = -100000000
+max_coord = 100000000
+```
+This will generate 4000 random polygons with 50 angles in each.
 
-## Entrée
+## Performance
 
-On récupère en entrée un ensemble de polygones à partir d'un fichier
-*.poly*. Ce format de fichier texte est basé sur le principe suivant :
+The performance of each algorithm was tested on a set of polygons with varying numbers of vertices and complexity without the Peucker optimisation. The results are shown below:
 
--   chaque ligne est constituée de 3 éléments séparés par un ou
-    plusieurs espaces : un entier, un flottant, un flottant
--   les deux flottants forment les coordonnées *x* et *y* d'un point
--   l'entier en début de ligne indique à quel polygone ce point est
-    rajouté, en partant de 0
--   l'ordre des lignes du fichier indique l'ordre des points des
-    polygones
--   les indices des polygones sont consécutifs (tous les points du
-    polygone 0, puis tous les points du polygone 1, ...)
+| Number of Polygons | Number of Vertices | Ray Tracing Method (seconds) | Winding Number Method (seconds) | Cross Product Method (seconds) |
+| --- | --- | --- | --- | --- |
+| 400 | 50 | 0.24 | 0.13 | 0.11 |
+| 4000 | 50 | 2.36 | 1.30 | 1.13 |
+| 400 | 300 | 8.20 | 4.59 | 4.02 |
 
-Au chargement, chaque fichier est converti en un vecteur de polygones.
+The Cross Product Method consistently outperformed the other methods, especially for polygons with a large number of vertices.
 
-À noter qu'il n'y a **jamais** d'intersection de segments entre deux
-polygones différents. Au sein d'un même polygone seuls les segments
-consécutifs s'intersectent et uniquement à leurs extrémités.
+## Optimization
 
-## Détection d'inclusion
+The Peucker and Doo Algorithm was used to simplify the polygons and improve the performance of the other algorithms. The results with a threshold of 90000000 are shown below:
 
-Pour ce projet, on ne vous donne pas d'algorithme complet. Néanmoins, un
-des algorithmes de base qu'il vous faudra implémenter consiste à
-détecter si un point est à l'intérieur d'un polygone. On peut y arriver
-en *partant* du point dans une direction arbitraire et en comptant le
-nombre de segments du polygone traversés sur notre chemin. Si c'est
-impair le point est à l'intérieur sinon à l'extérieur. Pour essayer
-d'éviter les problèmes liés aux erreurs d'arrondi et simplifier les
-calculs, le mieux est d'avancer verticalement ou horizontalement.
+| Number of Polygons | Number of Vertices | Ray Tracing Method (seconds) | Winding Number Method (seconds) | Cross Product Method (seconds) |
+| --- | --- | --- | --- | --- |
+| 400 | 50 | 0.05 | 0.03 | 0.02 |
+| 4000 | 50 | 0.47 | 0.26 | 0.21 |
+| 400 | 300 | 1.49 | 0.83 | 0.69 |
 
-Pour plus d'info voir
-[wikipedia](https://en.wikipedia.org/wiki/Point_in_polygon)
+The optimization significantly improved the performance of all algorithms, especially for polygons with a large number of vertices.
 
-## Sortie
+## Conclusion
 
-En sortie on vous demande d'afficher sur la sortie standard le vecteur
-indiquant quel polygone est inclus (directement) dans quel autre
-polygone. On identifie chaque polygone par son numéro. Comme tout
-polygone ne peut être inclus (directement) que dans au plus un autre
-polygone, il suffit pour stocker la solution d'associer à chaque
-polygone l'indice de son père ou *-1* s'il n'en a aucun. Le plus simple
-est alors de stocker cette information dans un vecteur tel que la ième
-case contient le père du ième polygone.
+The Cross Product Method was found to be the fastest algorithm for determining whether a point is inside a polygon, and the Peucker and Doo Algorithm was found to be effective at simplifying polygons and improving the performance of all algorithms.
 
-Par exemple le fichier *10x10.poly* fourni contient les deux polygones
-ci-dessous :
+## License
 
-![polys](c10x10.png)
+This project is licensed under the MIT License.
 
-Le polygone 0 est affiché en rouge et le polygone 1 en vert. Comme le
-vert est inclus dans le rouge et que le rouge n'est inclus dans personne
-la solution est le vecteur [-1, 0].
+## Acknowledgements
 
-Afficher la solution consiste simplement à faire un *print* de ce
-vecteur ce qui est d'ailleurs déjà réalisé ligne 30 du fichier *main.py*
-fourni.
+The implementation of the Winding Number Method was based on the algorithm described in [this article](https://en.wikipedia.org/wiki/Point_in_polygon).
 
-Second exemple, le fichier *e2.poly* suivant (0 est rouge, 1 est vert, 2
-est bleu, 3 est violet): ![polys](e2.png)
+The implementation of the Peucker and Doo Algorithm was based on the algorithm described in [this article](https://en.wikipedia.org/wiki/Ramer%E2%80%93Douglas%E2%80%93Peucker_algorithm).
 
-a pour solution : [1, -1, 0, 0]
+The implementation of the Cross Product Method was based on the algorithm described in [this article](https://en.wikipedia.org/wiki/Cross_product).
 
-## Code fourni
+The implementation of the Ray Tracing Method was based on the algorithm described in [this article](https://fr.wikipedia.org/wiki/Algorithme_de_d%C3%A9tection_de_collision_rayon-polygone).
 
-On vous fourni un petit module de géométrie : *geo*.
+The implementation of the benchmarking code was based on the code described in [this article](https://realpython.com/python-benchmark-tools/).
 
-Celui-ci contient toutes les classes de base (points, segments,
-polygones) ainsi qu'un module d'affichage à base de *tycat*. Tous les
-objets de base sont affichables ainsi que les itérables et itérateurs
-sur des objets de base. Vous pouvez voir comment ça fonctionne en
-examinant les fichiers *hello.py* et *tycat.py*.
+The implementation of the polygon generation code was based on the code described in [this article](https://stackoverflow.com/questions/36276889/generate-random-polygons-in-python).
 
-Le fichier *main.py* est important car il sera utilisé pour les tests
-automatiques. Vous pouvez (devez) le modifier mais attention ! Il faut
-respecter la sémantique : la sortie standard doit contenir exactement
-une ligne par fichier donné en argument, dans l'ordre donné. Chaque
-ligne est un *print* d'un vecteur d'entiers.
+The implementation of the polygon visualization code was based on the code described in [this article](https://matplotlib.org/stable/gallery/shapes_and_collections/artist_reference.html).
 
-On vous demande d'interpréter ce que vous voyez et de faire le lien avec
-la théorie. C'est la partie la plus importante du rapport. En plus de
-ça, nous sommes intéressés par :
-
--   plusieurs algos
--   comparaisons expérimentale d'algos
--   lien entre algo et entrée (sous quelle condition sur une entrée un
-    algo marche)
--   les générateurs d'entrée (comment ils sont construits, pour quelle
-    raison)
+The implementation of the command line argument parsing code was based on the code described in [this article](https://docs.python.org/3/library/argparse.html).
